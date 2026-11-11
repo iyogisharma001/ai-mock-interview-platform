@@ -1,0 +1,22 @@
+{
+  "name": "ai-mock-interview-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AI-powered mock interview & coding assessment platform",
+  "scripts": {
+    "infra": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "sandbox:pull": "docker pull python:3.10-slim && docker pull node:18-alpine && docker pull gcc:13",
+    "tunnel:up": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env up -d --build",
+    "tunnel:url": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env logs tunnel",
+    "tunnel:status": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env ps",
+    "tunnel:down": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env down",
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:worker": "npm --prefix server run worker",
+    "dev:client": "npm --prefix client run dev",
+    "seed": "npm --prefix server run seed",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix client run build"
+  }
+}

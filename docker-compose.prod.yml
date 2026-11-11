@@ -1,0 +1,62 @@
+# Backend for a single Linux host with Docker (a VPS). The React client is hosted separately.
+#
+#   cp deploy.env.example deploy.env   # then fill it in
+#   docker compose -f docker-compose.prod.yml --env-file deploy.env up -d --build
+#
+# Caddy terminates TLS for API_DOMAIN and obtains the certificate automatically, so the domain's
+# DNS A record must point at this host and ports 80 and 443 must be open.
+services:
+  api:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:?set CLIENT_ORIGIN to the site URL, e.g. https://your-app.vercel.app}
+      MONGO_URI: mongodb://mongo:27017/mock_interview
+      REDIS_URL: redis://redis:6379
+      AI_MODE: ${AI_MODE:-auto}
+      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RUN_WORKERS_INLINE: "true"
+      # Sandbox containers are siblings started through the host's Docker daemon. They share the
+      # per-run workspace with this container through a named volume.
+      SANDBOX_WORKDIR: /sandbox
+      SANDBOX_VOLUME: mock-interview-sandbox
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox:/sandbox
+    depends_on:
+      - mongo
+      - redis
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command: caddy reverse-proxy --from ${API_DOMAIN:?set API_DOMAIN, e.g. api.example.com} --to api:4000
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - api
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+
+volumes:
+  mongo-data:
+  redis-data:
+  caddy-data:
+  sandbox:
+    name: mock-interview-sandbox
