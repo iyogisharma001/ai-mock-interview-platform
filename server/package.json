@@ -13,7 +13,8 @@
     "test:e2e": "node test/e2e.smoke.mjs",
     "test:suites": "node test/runnableSuites.check.mjs",
     "test:cpp": "node test/cppSignatures.check.mjs",
-    "test:llm": "node test/llm.live.mjs"
+    "test:llm": "node test/llm.live.mjs",
+    "catalogue:export": "node scripts/export-catalogue.mjs"
   },
   "engines": {
     "node": ">=20"

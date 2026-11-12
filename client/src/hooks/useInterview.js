@@ -5,7 +5,7 @@ import { apiOrigin, loadBackendConfig } from '../lib/api.js';
 
 const MAX_TERMINAL_LINES = 500;
 
-export function useInterview(interviewId, voice, getEditorState) {
+export function useInterview(interviewId, voice, getEditorState, enabled = true) {
   const getEditorStateRef = useRef(getEditorState);
   getEditorStateRef.current = getEditorState;
   const [status, setStatus] = useState('connecting'); // connecting | live | ended | error
@@ -26,6 +26,7 @@ export function useInterview(interviewId, voice, getEditorState) {
   const pushTerminal = useCallback((line) => setTerminal((lines) => [...lines, line].slice(-MAX_TERMINAL_LINES)), []);
 
   useEffect(() => {
+    if (!enabled) return undefined; // a browser-only interview: useLocalInterview handles it
     const socket = io(apiOrigin() || undefined, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
@@ -109,7 +110,7 @@ export function useInterview(interviewId, voice, getEditorState) {
     socket.on('server:error', ({ message }) => setError(message));
 
     return () => socket.disconnect();
-  }, [interviewId, pushTerminal]);
+  }, [interviewId, pushTerminal, enabled]);
 
   const emit = useCallback((event, payload) => new Promise((resolve) => {
     socketRef.current?.emit(event, payload, (res) => {

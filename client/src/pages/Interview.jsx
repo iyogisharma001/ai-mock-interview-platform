@@ -4,6 +4,8 @@ import CodeEditor from '../components/CodeEditor.jsx';
 import InterviewerPanel from '../components/InterviewerPanel.jsx';
 import Terminal from '../components/Terminal.jsx';
 import { useInterview } from '../hooks/useInterview.js';
+import { useLocalInterview } from '../hooks/useLocalInterview.js';
+import { isLocalId } from '../standalone/store.js';
 import { useSpeech } from '../hooks/useSpeech.js';
 import { languageLabel } from '../lib/api.js';
 
@@ -29,10 +31,15 @@ export default function Interview() {
     onUtterance: (text) => handlers.current.say?.(text, true),
     onBargeIn: () => handlers.current.bargeIn?.(),
   });
-  const iv = useInterview(id, voice, () => {
+  const getEditorState = () => {
     const editor = editorRef.current;
     return editor ? { code: editor.getValue(), cursorLine: editor.getPosition()?.lineNumber || 1 } : null;
-  });
+  };
+  // Interviews started while the backend was offline run entirely in this browser.
+  const local = isLocalId(id);
+  const remote = useInterview(id, voice, getEditorState, !local);
+  const browserSession = useLocalInterview(id, voice, getEditorState, local);
+  const iv = local ? browserSession : remote;
   handlers.current = { say: iv.say, bargeIn: iv.bargeIn };
 
   const [highlight, setHighlight] = useState(null);

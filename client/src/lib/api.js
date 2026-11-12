@@ -88,13 +88,88 @@ async function request(path, options = {}) {
   return { status: res.status, data };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Server or standalone?
+//
+// The full backend (Docker sandbox, C++, server-side AI) is used whenever it answers. When it does
+// not, the site carries on by itself: problems come from /catalogue.json, code runs in the browser
+// and interviews are kept in this browser. Visitors never see an "unreachable" error.
+// ---------------------------------------------------------------------------------------------
+
+let mode = null; // 'server' | 'standalone'
+let deciding = null;
+const modeListeners = new Set();
+
+function setMode(next) {
+  if (mode === next) return;
+  mode = next;
+  for (const listener of modeListeners) listener(mode);
+}
+
+/** Subscribe to mode changes; returns an unsubscribe function. */
+export function onModeChange(listener) {
+  modeListeners.add(listener);
+  return () => modeListeners.delete(listener);
+}
+export const currentMode = () => mode;
+
+async function backendAnswers() {
+  try {
+    const res = await fetch(`${origin}/api/health`, { cache: 'no-store', signal: AbortSignal.timeout(4500) });
+    if (!res.ok) return false;
+    const health = await res.json();
+    return health?.mongo === 'up' && health?.redis === 'up';
+  } catch {
+    return false;
+  }
+}
+
+/** Decide once per page load which mode to use. Never rejects. */
+export function decideMode() {
+  if (mode) return Promise.resolve(mode);
+  deciding ??= (async () => {
+    let ok = await backendAnswers();
+    if (!ok && (await loadBackendConfig())) ok = await backendAnswers(); // the backend moved
+    setMode(ok ? 'server' : 'standalone');
+    return mode;
+  })();
+  return deciding;
+}
+
+/** Use the server; if it turns out to be unreachable, switch to standalone and use `local`. */
+async function either(remote, local) {
+  if ((await decideMode()) === 'server') {
+    try {
+      return await remote();
+    } catch (err) {
+      if (!err.unreachable) throw err;
+      setMode('standalone');
+    }
+  }
+  return local();
+}
+
+const standalone = () => import('../standalone/index.js');
+
 export const api = {
-  problems: (params = {}) => {
-    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null));
-    return request(`/problems?${query}`).then((r) => r.data);
+  problems: (params = {}) => either(
+    () => request(`/problems?${new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null))}`).then((r) => r.data),
+    async () => (await standalone()).listProblems(params),
+  ),
+  problemMeta: () => either(
+    () => request('/problems/meta').then((r) => r.data),
+    async () => (await standalone()).catalogueMeta(),
+  ),
+  createInterview: (body) => either(
+    () => request('/interviews', { method: 'POST', body }).then((r) => r.data),
+    async () => (await standalone()).createInterview(body),
+  ),
+  interview: async (id) => {
+    if ((await standalone()).isLocalId(id)) return (await standalone()).interviewDetails(id);
+    return request(`/interviews/${id}`).then((r) => r.data);
   },
-  problemMeta: () => request('/problems/meta').then((r) => r.data),
-  createInterview: (body) => request('/interviews', { method: 'POST', body }).then((r) => r.data),
-  interview: (id) => request(`/interviews/${id}`).then((r) => r.data),
-  report: (id) => request(`/interviews/${id}/report`).then((r) => r.data),
+  report: async (id) => {
+    if ((await standalone()).isLocalId(id)) return (await standalone()).reportFor(id);
+    return request(`/interviews/${id}/report`).then((r) => r.data);
+  },
 };

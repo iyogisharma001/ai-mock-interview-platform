@@ -122,7 +122,7 @@ export function registerInterviewSocket(io) {
       await limited('review', 10, 60);
       const interruption = await agent.reviewCode(ctx, emit, 'manual');
       if (!interruption) {
-        await agent.respond(ctx, emit, '[event] The candidate pressed "Review my code". Give a brief, honest assessment of the current code: its time and space complexity and the single most important thing to look at next.');
+        await agent.requestReview(ctx, emit);
       }
     }));
 

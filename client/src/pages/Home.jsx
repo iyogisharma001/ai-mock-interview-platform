@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, LANGUAGES } from '../lib/api.js';
+import { api, currentMode, LANGUAGES, onModeChange } from '../lib/api.js';
 
 const DIFFICULTY = { easy: 'text-signal', medium: 'text-note', hard: 'text-alarm' };
 const PAGE_SIZE = 40;
@@ -29,6 +29,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
+  const [mode, setMode] = useState(currentMode());
+  useEffect(() => onModeChange(setMode), []);
   const [name, setName] = useState(() => localStorage.getItem('candidateName') || '');
   const [language, setLanguage] = useState(() => {
     const saved = localStorage.getItem('language');
@@ -225,6 +227,11 @@ export default function Home() {
 
       <form onSubmit={start} className="h-fit rounded-xl border border-ink-800 bg-ink-900 p-5 lg:sticky lg:top-10">
         <h2 className="text-lg font-semibold">Start a session</h2>
+        {mode === 'standalone' && (
+          <p className="mt-2 rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-xs leading-relaxed text-ink-300">
+            Browser mode: Python and JavaScript run right here in your browser and your session is saved on this device. C++ runs only when the full server is online.
+          </p>
+        )}
 
         <div className="mt-4 rounded-md border border-ink-800 bg-ink-950 px-3 py-2.5">
           <div className="text-xs text-ink-400">Problem</div>
