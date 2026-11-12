@@ -53,7 +53,7 @@ export default function Home() {
         setMeta(await api.problemMeta());
         setOffline(false);
         setError('');
-        load(1, false);
+        loadRef.current(1, false); // the latest `load`, so the current filters are respected
       } catch {
         /* still down: try again on the next tick */
       }
@@ -87,6 +87,9 @@ export default function Home() {
       if (requestId.current === id) setLoading(false);
     }
   };
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useEffect(() => {
     load(1, false);

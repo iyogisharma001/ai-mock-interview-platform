@@ -108,6 +108,7 @@ async function restartTunnel(reason) {
 async function publishedUrl() {
   try {
     await run('git', ['fetch', '--quiet', 'origin', BRANCH], { timeout: 60_000 });
+    await run('git', ['show', 'FETCH_HEAD:vercel.json']); // older layouts lacked this: republish them
     return JSON.parse(await run('git', ['show', 'FETCH_HEAD:backend.json'])).url;
   } catch {
     return null; // branch does not exist yet, or we are offline
@@ -121,7 +122,9 @@ async function publish(url) {
     child.stdin.end(input);
   });
   const blob = await pipe(['hash-object', '-w', '--stdin'], `${JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2)}\n`);
-  const tree = await pipe(['mktree'], `100644 blob ${blob}\tbackend.json\n`);
+  // The branch holds data, not a site: tell Vercel not to try to build it on every update.
+  const noDeploy = await pipe(['hash-object', '-w', '--stdin'], `${JSON.stringify({ git: { deploymentEnabled: false } }, null, 2)}\n`);
+  const tree = await pipe(['mktree'], `100644 blob ${blob}\tbackend.json\n100644 blob ${noDeploy}\tvercel.json\n`);
   const commit = await pipe(['commit-tree', tree, '-m', 'Backend address'], '');
   await run('git', ['push', '--quiet', '--force', 'origin', `${commit}:refs/heads/${BRANCH}`], { timeout: 60_000 });
 }
