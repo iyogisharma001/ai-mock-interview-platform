@@ -45,7 +45,8 @@ async function processReport(job) {
   if (!interview) throw new Error('Interview not found');
   const problem = await Problem.findById(interview.problem).lean();
 
-  const report = await generateReport({ interview, problem });
+  // On the final attempt the report falls back to heuristics instead of failing outright.
+  const report = await generateReport({ interview, problem, attempt: job.attemptsMade + 1, maxAttempts: job.opts.attempts || 1 });
   await Report.findOneAndUpdate({ interview: interviewId }, { ...report, interview: interviewId }, { upsert: true, runValidators: true });
   await Interview.updateOne({ _id: interviewId }, { $set: { reportStatus: 'ready' } });
   return { interviewId, generatedBy: report.generatedBy };

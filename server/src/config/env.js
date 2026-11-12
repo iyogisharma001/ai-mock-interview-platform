@@ -14,7 +14,9 @@ export const env = {
   REDIS_URL: str(process.env.REDIS_URL, 'redis://127.0.0.1:6379'),
 
   AI_MODE: str(process.env.AI_MODE, 'auto'),
-  AI_MODEL: str(process.env.AI_MODEL, 'claude-opus-5-5'),
+  AI_MODEL: str(process.env.AI_MODEL, 'gemini-3.8-flash'),
+  // Tried in order when the main model is overloaded, rate-limited or not offered to this key.
+  AI_MODEL_FALLBACKS: str(process.env.AI_MODEL_FALLBACKS, 'gemini-3.5-flash,gemini-3.1-flash-lite'),
 
   RUN_WORKERS_INLINE: bool(process.env.RUN_WORKERS_INLINE, true),
   EXECUTION_CONCURRENCY: num(process.env.EXECUTION_CONCURRENCY, 4),

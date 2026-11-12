@@ -12,13 +12,14 @@
     "test": "node --test test/*.test.js",
     "test:e2e": "node test/e2e.smoke.mjs",
     "test:suites": "node test/runnableSuites.check.mjs",
-    "test:cpp": "node test/cppSignatures.check.mjs"
+    "test:cpp": "node test/cppSignatures.check.mjs",
+    "test:llm": "node test/llm.live.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0",
+    "@google/genai": "^3.2.0",
     "bullmq": "^6.7.4",
     "cors": "^2.8.6",
     "dockerode": "^5.0.1",

@@ -115,7 +115,7 @@ export default function Report() {
         <p className="mt-5 leading-relaxed text-ink-100">{r.summary}</p>
         {r.generatedBy === 'heuristic' && (
           <p className="mt-3 rounded-md border border-ink-700 bg-ink-900 px-3 py-2 text-xs text-ink-300">
-            Generated from static heuristics only. Set ANTHROPIC_API_KEY on the server for a full written review.
+            Generated from static heuristics only. Set GEMINI_API_KEY on the server for a full written review.
           </p>
         )}
       </header>

@@ -3,21 +3,17 @@
 //
 // Every public function takes `emit(event, payload)` so the transport (Socket.io room) stays out of here.
 import { createHash, randomUUID } from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { log } from '../utils/logger.js';
 import { analyzeComplexity, complexityRank } from './complexityAnalyzer.js';
 import { appendTranscript } from './interviewService.js';
 import * as state from './interviewState.js';
+import { generateJson, isTransient, llmEnabled, logLlmError as logApiError, streamText } from './llm.js';
 
-const hasCredentials = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
-export const llmEnabled = env.AI_MODE === 'live' || (env.AI_MODE === 'auto' && hasCredentials);
-const client = llmEnabled ? new Anthropic() : null;
+export { llmEnabled, llmLabel } from './llm.js';
 
-// If a safety classifier declines a turn, the API re-runs it on a fallback model inside the same call.
-const FALLBACK = { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' };
+// Truthy when a language model is configured; otherwise the rule-based interviewer answers.
+const client = llmEnabled;
 const INTERRUPT_COOLDOWN_SEC = 90;
 
 const PERSONA = `You are a senior staff engineer conducting a live technical interview over voice. The candidate hears your words through text-to-speech and you can see their code editor as they type.
@@ -61,25 +57,15 @@ function systemFor(ctx) {
     p.rubric ? `Interviewer notes (never reveal directly): ${p.rubric}` : '',
     p.hints?.length ? `Hints you may give, in escalating order, only when needed:\n${p.hints.map((h, i) => `${i + 1}. ${h}`).join('\n')}` : '',
   ].filter((line) => line !== '').join('\n');
-  // Stable prefix (persona + problem) is cacheable; the volatile editor snapshot rides in the last user turn.
-  return [
-    { type: 'text', text: PERSONA },
-    { type: 'text', text: brief, cache_control: { type: 'ephemeral' } },
-  ];
+  // The system instruction (persona + problem) never changes during an interview; the volatile
+  // editor snapshot rides in the last user turn.
+  return `${PERSONA}\n\n${brief}`;
 }
 
 async function editorBlock(ctx) {
   const editor = await state.getEditor(ctx.interviewId);
   if (!editor) return '';
   return `\n\n<editor language="${editor.language}" cursor_line="${editor.cursorLine}">\n${numbered(editor.code)}\n</editor>`;
-}
-
-function logApiError(where, err) {
-  if (err instanceof Anthropic.AuthenticationError) log.error(`[ai:${where}] authentication failed: check ANTHROPIC_API_KEY`);
-  else if (err instanceof Anthropic.RateLimitError) log.warn(`[ai:${where}] rate limited`);
-  else if (err instanceof Anthropic.APIConnectionError) log.warn(`[ai:${where}] connection error: ${err.message}`);
-  else if (err instanceof Anthropic.APIError) log.error(`[ai:${where}] API error ${err.status}: ${err.message}`);
-  else log.error(`[ai:${where}] ${err.message}`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -95,20 +81,12 @@ export function cancelSpeech(interviewId) {
 
 async function llmStream(ctx, event, onDelta, signal) {
   const history = await state.getHistory(ctx.interviewId);
-  const stream = client.beta.messages.stream(
-    {
-      model: env.AI_MODEL,
-      max_tokens: 8000,
-      ...FALLBACK,
-      output_config: { effort: 'low' }, // conversational latency matters more than depth here
-      system: systemFor(ctx),
-      messages: [...history, { role: 'user', content: event + (await editorBlock(ctx)) }],
-    },
-    { signal },
-  );
-  stream.on('text', onDelta);
-  const final = await stream.finalMessage();
-  if (final.stop_reason === 'refusal') throw new Error('model declined this turn');
+  await streamText({
+    system: systemFor(ctx),
+    messages: [...history, { role: 'user', content: event + (await editorBlock(ctx)) }],
+    onDelta,
+    signal,
+  });
 }
 
 async function mockStream(text, onDelta, signal) {
@@ -259,18 +237,13 @@ const ReviewSchema = z.object({
 
 async function llmReview(ctx, editor, analysis) {
   const p = ctx.problem;
-  const response = await client.messages.parse({
-    model: env.AI_MODEL,
-    max_tokens: 4000,
-    output_config: { effort: 'low', format: zodOutputFormat(ReviewSchema) },
+  return generateJson({
+    schema: ReviewSchema,
+    thinkingBudget: 1024, // enough to tell an amortised linear loop from a truly quadratic one
+    maxOutputTokens: 2048,
     system: `${PERSONA}\n\nYou are watching the candidate type. Decide whether to interrupt them right now. Interrupt only for a real asymptotic problem in code that is substantially written, not for half-typed lines, style, or an approach that is already at the target complexity (sliding window and two-pointer loops are linear even though they nest). When you do interrupt, sound urgent but friendly, point at the exact lines, name the complexity you see, and ask whether it can be optimised before running tests. Do not reveal the optimal technique.`,
-    messages: [{
-      role: 'user',
-      content: `Problem: ${p.title}\nTarget: ${p.expectedTime} time, ${p.expectedSpace} space.\n\n${p.description}\n\nStatic analysis flagged:\n${analysis.findings.map((f) => `- ${f.detail}`).join('\n') || '- nothing'}\n\n<editor language="${editor.language}">\n${numbered(editor.code)}\n</editor>`,
-    }],
+    prompt: `Problem: ${p.title}\nTarget: ${p.expectedTime} time${p.expectedSpace ? `, ${p.expectedSpace} space` : ''}.\n\n${p.description}\n\nStatic analysis flagged:\n${analysis.findings.map((f) => `- ${f.detail}`).join('\n') || '- nothing'}\n\n<editor language="${editor.language}">\n${numbered(editor.code)}\n</editor>`,
   });
-  if (response.stop_reason === 'refusal') return null;
-  return response.parsed_output;
 }
 
 function heuristicReview(ctx, analysis) {
@@ -429,7 +402,7 @@ function heuristicReport(interview, problem, metrics) {
   };
 }
 
-export async function generateReport({ interview, problem }) {
+export async function generateReport({ interview, problem, attempt = 1, maxAttempts = 1 }) {
   const metrics = metricsOf(interview, problem);
   let report = null;
 
@@ -437,20 +410,23 @@ export async function generateReport({ interview, problem }) {
     const transcript = interview.transcript
       .map((t) => `${t.role.toUpperCase()}${t.kind === 'interruption' ? ' (INTERRUPTION)' : ''}: ${t.text}`)
       .join('\n');
-    // Streamed: report generation is a long, high-effort request and must not hit HTTP timeouts.
-    const stream = client.messages.stream({
-      model: env.AI_MODEL,
-      max_tokens: 32000,
-      output_config: { effort: 'high', format: zodOutputFormat(ReportSchema) },
-      system: 'You are a hiring-committee calibrated senior engineer writing the written feedback for a mock technical interview. Be specific and evidence-based: cite line numbers of the final code and moments from the transcript. Be honest about weaknesses; inflated feedback does not help the candidate improve. Score each dimension as an integer from 0 to 10 where 5 is a borderline pass at a mid-level bar.',
-      messages: [{
-        role: 'user',
-        content: `Problem: ${problem.title} (${problem.difficulty}, ${problem.type})\nTarget complexity: ${problem.expectedTime} time, ${problem.expectedSpace} space\n\n${problem.description}\n\nObjective metrics: ${JSON.stringify(metrics)}\nTest runs (chronological): ${JSON.stringify(interview.runs.map((r) => ({ status: r.status, passed: r.passed, total: r.total, ms: r.durationMs })))}\n\n<final_code language="${interview.language}">\n${numbered(interview.finalCode)}\n</final_code>\n\n<transcript>\n${transcript || '(the candidate said nothing)'}\n</transcript>`,
-      }],
-    });
-    const message = await stream.finalMessage(); // API errors propagate so BullMQ retries with backoff
-    if (message.stop_reason !== 'refusal' && message.parsed_output) report = { ...message.parsed_output, generatedBy: 'llm' };
-    else log.warn(`[ai:report] no structured output (stop_reason=${message.stop_reason}); using heuristic report`);
+    try {
+      const written = await generateJson({
+        schema: ReportSchema,
+        thinkingBudget: -1, // the report is the one place depth matters more than speed
+        maxOutputTokens: 16384,
+        timeoutMs: 90_000,
+        system: 'You are a hiring-committee calibrated senior engineer writing the written feedback for a mock technical interview. Be specific and evidence-based: cite line numbers of the final code and moments from the transcript. Be honest about weaknesses; inflated feedback does not help the candidate improve. Score each dimension as an integer from 0 to 10 where 5 is a borderline pass at a mid-level bar.',
+        prompt: `Problem: ${problem.title} (${problem.difficulty}, ${problem.type})\nTarget complexity: ${problem.expectedTime} time${problem.expectedSpace ? `, ${problem.expectedSpace} space` : ''}\n\n${problem.description}\n\nObjective metrics: ${JSON.stringify(metrics)}\nTest runs (chronological): ${JSON.stringify(interview.runs.map((r) => ({ status: r.status, passed: r.passed, total: r.total, ms: r.durationMs })))}\n\n<final_code language="${interview.language}">\n${numbered(interview.finalCode)}\n</final_code>\n\n<transcript>\n${transcript || '(the candidate said nothing)'}\n</transcript>`,
+      });
+      report = { ...written, generatedBy: 'llm' };
+    } catch (err) {
+      logApiError('report', err);
+      // Rate limits and outages are worth another try (BullMQ retries with backoff). Anything
+      // else, such as a rejected key or an unusable answer, falls back to the heuristic report.
+      if (isTransient(err) && attempt < maxAttempts) throw err;
+      log.warn('[ai:report] using the heuristic report instead');
+    }
   }
 
   report ??= heuristicReport(interview, problem, metrics);

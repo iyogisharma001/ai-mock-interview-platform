@@ -19,7 +19,7 @@ Open http://localhost:5173 in Chrome or Edge (voice input uses the Web Speech AP
 
 ### Enabling the LLM interviewer
 
-Without credentials the platform runs a rule-based interviewer so everything works offline: heuristic interruptions, canned probing questions and a heuristic report. Set `ANTHROPIC_API_KEY` in `server/.env` to switch to Claude (`AI_MODEL`, default `claude-opus-5-5`) for conversation, interruption judgement and the written report. `GET /api/health` reports which mode is active.
+Without a key the platform runs a rule-based interviewer so everything works offline: heuristic interruptions, canned probing questions and a heuristic report. Set `GEMINI_API_KEY` (from https://aistudio.google.com/apikey) in `server/.env`, or in `deploy.env` for the Docker setups, to switch to Google Gemini (`AI_MODEL`, default `gemini-3.8-flash`, falling back to the models in `AI_MODEL_FALLBACKS` when it is overloaded) for conversation, interruption judgement and the written report. `GET /api/health` reports which mode is active. All provider code lives in `server/src/services/llm.js`.
 
 ## Problem catalogue
 
@@ -72,8 +72,8 @@ MongoDB holds the durable records (`Problem`, `Interview` with transcript and ru
 - **Streaming speech.** Each turn streams tokens over `ai:stream:delta`. The client speaks whole sentences as they complete, so the interviewer starts talking before the response has finished generating.
 - **Interruption trigger.** 1.5 s after the candidate stops typing (and again when they press Run), the static analyser scans the buffer for nested loops and linear-time calls inside loops. Only if something is worse than the problem's target complexity is the LLM asked for a structured verdict (interrupt or not, line range, time/space complexity, what to say). A confirmed problem is emitted as `ai:interrupt`: the editor highlights the lines, and the TTS cuts off whatever was being said. Each code region can only trigger one interruption per 90 s.
 - **Barge-in.** If the candidate talks over the interviewer, playback stops and the in-flight LLM stream is aborted server-side.
-- **Refusal fallback.** Conversation turns opt into server-side model fallback, so a safety-classifier decline is retried on a fallback model inside the same request instead of leaving silence.
-- **Prompt caching.** Persona and problem statement form a stable, cacheable system prefix; the editor snapshot travels in the last user turn.
+- **Graceful fallback.** If the model is rate-limited, blocked or returns nothing, that turn is answered by the rule-based interviewer instead of leaving silence, and a failed report falls back to the heuristic one.
+- **Stable system instruction.** Persona and problem statement form the system instruction, unchanged for the whole interview; the editor snapshot travels in the last user turn.
 
 ### Code sandbox (`server/src/services/sandboxEngine.js`)
 
@@ -148,7 +148,7 @@ Know the limits before relying on it:
 Any provider's VPS works (2 vCPU and 4 GB RAM is a comfortable start). Point a domain such as `api.example.com` at it, install Docker, copy this repository over, then:
 
 ```bash
-cp deploy.env.example deploy.env      # set API_DOMAIN, CLIENT_ORIGIN and optionally ANTHROPIC_API_KEY
+cp deploy.env.example deploy.env      # set API_DOMAIN, CLIENT_ORIGIN and optionally GEMINI_API_KEY
 docker compose -f docker-compose.prod.yml --env-file deploy.env up -d --build
 ```
 

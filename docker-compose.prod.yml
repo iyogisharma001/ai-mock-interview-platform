@@ -15,8 +15,9 @@ services:
       MONGO_URI: mongodb://mongo:27017/mock_interview
       REDIS_URL: redis://redis:6379
       AI_MODE: ${AI_MODE:-auto}
-      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gemini-3.8-flash}
+      AI_MODEL_FALLBACKS: ${AI_MODEL_FALLBACKS:-gemini-3.5-flash,gemini-3.1-flash-lite}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       RUN_WORKERS_INLINE: "true"
       # Sandbox containers are siblings started through the host's Docker daemon. They share the
       # per-run workspace with this container through a named volume.

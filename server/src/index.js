@@ -11,7 +11,7 @@ import { rateLimit } from './middleware/rateLimit.js';
 import { closeQueues } from './queues/index.js';
 import { api, errorHandler } from './routes/api.js';
 import { seedProblems } from './seed/problems.js';
-import { llmEnabled } from './services/aiAgent.js';
+import { llmEnabled, llmLabel } from './services/aiAgent.js';
 import { bridgeQueueEvents, registerInterviewSocket } from './sockets/interviewSocket.js';
 import { log } from './utils/logger.js';
 import { startWorkers } from './workers/index.js';
@@ -42,7 +42,7 @@ const workers = env.RUN_WORKERS_INLINE ? startWorkers() : null;
 server.listen(env.PORT, () => {
   log.info(`API + Socket.io listening on :${env.PORT}`);
   log.info(`Browser origins allowed: ${describeOrigins()}`);
-  log.info(`AI interviewer: ${llmEnabled ? `Claude (${env.AI_MODEL})` : 'rule-based fallback (set ANTHROPIC_API_KEY to enable the LLM)'}`);
+  log.info(`AI interviewer: ${llmEnabled ? llmLabel : 'rule-based fallback (set GEMINI_API_KEY to enable the LLM)'}`);
 });
 
 let closing = false;
