@@ -40,7 +40,9 @@ services:
 
   tunnel:
     image: cloudflare/cloudflared:latest
-    restart: unless-stopped
+    # Deliberately not "unless-stopped": if Cloudflare refuses a new quick tunnel (HTTP 429), an
+    # endless restart loop keeps hitting their rate limit and prolongs the block.
+    restart: on-failure:2
     command: tunnel --no-autoupdate --url http://api:4000
     depends_on:
       api:
