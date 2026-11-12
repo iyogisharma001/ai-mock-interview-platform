@@ -146,7 +146,19 @@ async function json(body, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method === 'GET') return res.status(200).json({ configured: Boolean(KEY), models: KEY ? MODELS : [] });
+  if (req.method === 'GET') {
+    // Diagnostics for setup problems: which deployment this is and which key-like settings exist.
+    // Names only, never values.
+    const keyNames = Object.keys(process.env).filter((name) => /gemini|google|genai|api_?key/i.test(name)).sort();
+    return res.status(200).json({
+      configured: Boolean(KEY),
+      models: KEY ? MODELS : [],
+      environment: process.env.VERCEL_ENV || 'unknown',
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7),
+      keyNamesSeen: keyNames,
+      expected: 'GEMINI_API_KEY',
+    });
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
   if (!sameSite(req)) return res.status(403).json({ error: 'forbidden' });
   if (!KEY) return res.status(503).json({ error: 'not configured' });
