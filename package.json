@@ -9,6 +9,7 @@
     "sandbox:pull": "docker pull python:3.10-slim && docker pull node:18-alpine && docker pull gcc:13",
     "tunnel:up": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env up -d --build",
     "tunnel:url": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env logs tunnel",
+    "tunnel:publish": "node scripts/publish-tunnel-url.mjs --push",
     "tunnel:status": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env ps",
     "tunnel:down": "docker compose -f docker-compose.tunnel.yml --env-file deploy.env down",
     "install:all": "npm --prefix server install && npm --prefix client install",

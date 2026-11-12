@@ -29,7 +29,10 @@ export default function Interview() {
     onUtterance: (text) => handlers.current.say?.(text, true),
     onBargeIn: () => handlers.current.bargeIn?.(),
   });
-  const iv = useInterview(id, voice);
+  const iv = useInterview(id, voice, () => {
+    const editor = editorRef.current;
+    return editor ? { code: editor.getValue(), cursorLine: editor.getPosition()?.lineNumber || 1 } : null;
+  });
   handlers.current = { say: iv.say, bargeIn: iv.bargeIn };
 
   const [highlight, setHighlight] = useState(null);

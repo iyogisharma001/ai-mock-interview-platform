@@ -129,7 +129,11 @@ npm run tunnel:up        # build and start api, mongo, redis and the tunnel
 npm run tunnel:url       # look for the https://….trycloudflare.com address
 ```
 
-Put that address in `VITE_API_URL` on Vercel or Netlify and redeploy the site. Settings live in `deploy.env`; `CLIENT_ORIGIN` there accepts exact origins, patterns such as `https://*.vercel.app`, or `*`.
+```bash
+npm run tunnel:publish   # write the address to client/public/backend.json, commit and push it
+```
+
+The site reads `/backend.json` when it loads, so once the repository is connected to Vercel or Netlify that push redeploys it pointing at the new address. Run it again whenever the tunnel restarts. (Setting `VITE_API_URL` in the host's dashboard also works; the file wins when both exist.) Settings live in `deploy.env`; `CLIENT_ORIGIN` there accepts exact origins, patterns such as `https://*.vercel.app`, or `*`.
 
 Know the limits before relying on it:
 

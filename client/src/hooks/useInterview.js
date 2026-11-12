@@ -1,11 +1,13 @@
 // Owns the Socket.io connection and all live interview state for one session.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
-import { API_ORIGIN } from '../lib/api.js';
+import { apiOrigin } from '../lib/api.js';
 
 const MAX_TERMINAL_LINES = 500;
 
-export function useInterview(interviewId, voice) {
+export function useInterview(interviewId, voice, getEditorState) {
+  const getEditorStateRef = useRef(getEditorState);
+  getEditorStateRef.current = getEditorState;
   const [status, setStatus] = useState('connecting'); // connecting | live | ended | error
   const [error, setError] = useState('');
   const [session, setSession] = useState(null);
@@ -24,7 +26,7 @@ export function useInterview(interviewId, voice) {
   const pushTerminal = useCallback((line) => setTerminal((lines) => [...lines, line].slice(-MAX_TERMINAL_LINES)), []);
 
   useEffect(() => {
-    const socket = io(API_ORIGIN || undefined, { transports: ['websocket', 'polling'] });
+    const socket = io(apiOrigin() || undefined, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     const join = () => {
@@ -37,6 +39,10 @@ export function useInterview(interviewId, voice) {
         setSession({ interview: res.interview, problem: res.problem, aiMode: res.aiMode });
         setInitialCode((prev) => prev ?? res.code);
         setHints(res.hints || []);
+        // After a reconnect the server may hold an older copy of the code: anything typed while
+        // offline never arrived. Send the editor's current contents so the interviewer sees them.
+        const current = getEditorStateRef.current?.();
+        if (current && res.interview.status === 'active' && current.code !== res.code) socket.emit('code:change', current);
         // Keep any message that is still streaming: the interviewer can start talking before this
         // acknowledgement arrives, and the saved transcript does not contain that turn yet.
         const history = res.transcript.map((t, i) => ({ id: `h${i}`, role: t.role, kind: t.kind, text: t.text, meta: t.meta }));
@@ -106,7 +112,11 @@ export function useInterview(interviewId, voice) {
   }), []);
 
   const actions = {
-    sendCode: useCallback((code, cursorLine) => socketRef.current?.emit('code:change', { code, cursorLine }), []),
+    // Not sent while offline: Socket.io would replay it before the room is re-joined and the server
+    // would reject it. The reconnect handler above sends the latest code instead.
+    sendCode: useCallback((code, cursorLine) => {
+      if (socketRef.current?.connected) socketRef.current.emit('code:change', { code, cursorLine });
+    }, []),
     runCode: useCallback((code, cursorLine) => emit('code:run', { code, cursorLine }), [emit]),
     say: useCallback((text, viaVoice = false) => {
       setMessages((list) => [...list, { id: crypto.randomUUID(), role: 'candidate', kind: 'message', text, meta: { viaVoice } }]);

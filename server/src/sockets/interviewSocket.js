@@ -50,6 +50,7 @@ export function registerInterviewSocket(io) {
       await socket.join(ctx.room);
 
       const interview = await Interview.findById(interviewId).select('status transcript startedAt reportStatus finalCode hintsUsed').lean();
+      if (!interview) throw new Error('Interview not found');
       const editor = (await state.getEditor(interviewId)) || { code: interview.finalCode || ctx.problem.starterCode?.[ctx.language] || '', language: ctx.language, cursorLine: 1 };
 
       // Greet exactly once, even if the tab reconnects or is opened twice.
