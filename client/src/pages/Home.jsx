@@ -28,6 +28,7 @@ export default function Home() {
   const [list, setList] = useState({ items: [], total: 0, page: 1, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offline, setOffline] = useState(false);
   const [name, setName] = useState(() => localStorage.getItem('candidateName') || '');
   const [language, setLanguage] = useState(() => {
     const saved = localStorage.getItem('language');
@@ -38,8 +39,28 @@ export default function Home() {
   const requestId = useRef(0);
 
   useEffect(() => {
-    api.problemMeta().then(setMeta).catch((err) => setError(err.message));
+    api.problemMeta().then(setMeta).catch((err) => {
+      setError(err.message);
+      setOffline(Boolean(err.unreachable));
+    });
   }, []);
+
+  // While the server is unreachable, keep trying quietly: the page heals itself when it returns.
+  useEffect(() => {
+    if (!offline) return undefined;
+    const timer = setInterval(async () => {
+      try {
+        setMeta(await api.problemMeta());
+        setOffline(false);
+        setError('');
+        load(1, false);
+      } catch {
+        /* still down: try again on the next tick */
+      }
+    }, 6000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
 
   // Debounce typing so the list is not refetched on every keystroke.
   useEffect(() => {
@@ -58,7 +79,10 @@ export default function Home() {
       if (!append) setSelected((current) => current && data.items.some((p) => p.slug === current.slug) ? current : data.items[0] || null);
       setError('');
     } catch (err) {
-      if (requestId.current === id) setError(err.message);
+      if (requestId.current === id) {
+        setError(err.message);
+        setOffline(Boolean(err.unreachable));
+      }
     } finally {
       if (requestId.current === id) setLoading(false);
     }
@@ -178,7 +202,9 @@ export default function Home() {
             );
           })}
           {!loading && list.items.length === 0 && (
-            <li className="px-3 py-8 text-center text-sm text-ink-400">No problems match those filters.</li>
+            <li className="px-3 py-8 text-center text-sm text-ink-400">
+              {offline ? 'Waiting for the interview server. This page will load the problems by itself when it is back.' : 'No problems match those filters.'}
+            </li>
           )}
         </ul>
 
@@ -240,7 +266,7 @@ export default function Home() {
         >
           {starting ? 'Starting…' : 'Start interview'}
         </button>
-        {error && <p role="alert" className="mt-3 text-sm text-fail">{error}</p>}
+        {error && <p role="alert" className={`mt-3 text-sm ${offline ? 'text-alarm' : 'text-fail'}`}>{error}</p>}
         <p className="mt-4 text-xs leading-relaxed text-ink-400">
           Use Chrome or Edge with headphones for voice. Your code runs in a locked-down container: 128 MB, half a CPU, 5 seconds, no network.
         </p>

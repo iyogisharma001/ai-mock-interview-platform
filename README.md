@@ -130,15 +130,17 @@ npm run tunnel:url       # look for the https://….trycloudflare.com address
 ```
 
 ```bash
-npm run tunnel:publish   # write the address to client/public/backend.json, commit and push it
+npm run watchdog         # keep the backend reachable; leave this running
 ```
 
-The site reads `/backend.json` when it loads, so once the repository is connected to Vercel or Netlify that push redeploys it pointing at the new address. Run it again whenever the tunnel restarts. (Setting `VITE_API_URL` in the host's dashboard also works; the file wins when both exist.) Settings live in `deploy.env`; `CLIENT_ORIGIN` there accepts exact origins, patterns such as `https://*.vercel.app`, or `*`.
+The watchdog checks Docker, the backend containers and the tunnel every 20 seconds and repairs whichever is broken: it starts Docker Desktop, starts the containers, replaces a dead tunnel, and publishes the tunnel's current address to the `backend-address` branch of the repository. The site reads the address from that branch when it loads and again whenever a request fails, so a new address reaches open pages in about a minute, with no rebuild and no dashboard setting. `npm run tunnel:publish` does one repair-and-publish pass and exits. Activity is logged to `tunnel-watchdog.log`.
+
+If you fork this, set `VITE_ADDRESS_REPO` to `your-user/your-repo` when building the client (or to an empty value to rely on `VITE_API_URL` alone). Settings live in `deploy.env`; `CLIENT_ORIGIN` there accepts exact origins, patterns such as `https://*.vercel.app`, or `*`.
 
 Know the limits before relying on it:
 
-- The address is random and changes whenever the tunnel container restarts (including after a reboot), and the site must then be rebuilt with the new one. A named Cloudflare tunnel on your own domain gives a fixed address.
-- Your computer has to stay on, awake and running Docker.
+- The address is random and changes whenever the tunnel restarts. The watchdog hides that, at the cost of about a minute of downtime each time. A named Cloudflare tunnel on your own domain gives a fixed address.
+- Your computer has to stay on and awake, and the watchdog has to be running.
 - Anyone who learns the address can start interviews and run code in the sandbox on your machine. Stop it with `npm run tunnel:down` when you are not using it.
 
 ### 1. Backend on a Linux server

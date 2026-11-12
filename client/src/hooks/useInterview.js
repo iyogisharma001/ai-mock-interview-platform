@@ -1,7 +1,7 @@
 // Owns the Socket.io connection and all live interview state for one session.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
-import { apiOrigin } from '../lib/api.js';
+import { apiOrigin, loadBackendConfig } from '../lib/api.js';
 
 const MAX_TERMINAL_LINES = 500;
 
@@ -53,7 +53,15 @@ export function useInterview(interviewId, voice, getEditorState) {
     };
 
     socket.on('connect', join);
-    socket.on('connect_error', () => setError('Connection lost. Reconnecting…'));
+    let lastLookup = 0;
+    socket.on('connect_error', async () => {
+      setError('Connection lost. Reconnecting…');
+      // The backend may have moved to a new address: look it up (at most every 15 s) and point the
+      // connection manager at it, so the next automatic retry goes to the right place.
+      if (Date.now() - lastLookup < 15_000) return;
+      lastLookup = Date.now();
+      if (await loadBackendConfig()) socket.io.uri = apiOrigin();
+    });
     socket.io.on('reconnect', () => setError(''));
 
     socket.on('ai:stream:start', ({ id, kind }) => {
