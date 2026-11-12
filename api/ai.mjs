@@ -8,7 +8,10 @@
 // Configure in Vercel: Project -> Settings -> Environment Variables -> GEMINI_API_KEY
 // (optionally AI_MODEL and AI_MODEL_FALLBACKS, comma-separated), then redeploy.
 const API = 'https://generativelanguage.googleapis.com/v1beta/models';
-const KEY = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+// GEMINI_API_KEY is the documented name; any variable whose name mentions both "gemini" and "key"
+// (for example Vercel_Gemini_API_Key) is accepted too, so a differently named setting still works.
+const looseKeyName = Object.keys(process.env).find((name) => /gemini/i.test(name) && /key/i.test(name) && process.env[name]?.trim());
+const KEY = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || (looseKeyName && process.env[looseKeyName]) || '').trim();
 const MODELS = [...new Set([process.env.AI_MODEL || 'gemini-3.8-flash', ...(process.env.AI_MODEL_FALLBACKS || 'gemini-3.5-flash,gemini-3.1-flash-lite').split(',')]
   .map((m) => m.trim()).filter((m) => /^[a-z0-9.-]+$/.test(m)))];
 
