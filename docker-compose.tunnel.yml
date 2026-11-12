@@ -43,7 +43,8 @@ services:
     # Deliberately not "unless-stopped": if Cloudflare refuses a new quick tunnel (HTTP 429), an
     # endless restart loop keeps hitting their rate limit and prolongs the block.
     restart: on-failure:2
-    command: tunnel --no-autoupdate --url http://api:4000
+    # HTTP/2 over TCP instead of the default QUIC (UDP), which drops on many home networks.
+    command: tunnel --no-autoupdate --protocol http2 --url http://api:4000
     depends_on:
       api:
         condition: service_healthy
