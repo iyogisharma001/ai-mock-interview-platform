@@ -8,8 +8,14 @@ export function complexityRank(label) {
   if (s.includes('2^n') || s.includes('n!')) return 6;
   if (s.includes('n^3')) return 5;
   if (s.includes('n^2')) return 4;
-  if (s.includes('nlogn') || s.includes('nlog(n)')) return 3;
-  if (s.includes('logn') || s.includes('log(n)')) return 1;
+  if (s.includes('exponential')) return 6;
+  // Targets written with several variables: O(m*n), O(n*k), O(V*E) allow one level of nesting,
+  // and three factors such as O(k*m*n) allow two.
+  const inner = s.replace(/^o\(/, '').replace(/\)$/, '');
+  if (/^[a-z]{3}$/.test(inner)) return 5;
+  if (/^[a-z]{2}$/.test(inner)) return 4;
+  if (/[a-z]log/.test(inner)) return 3; // n log n, N log k, E log V
+  if (s.includes('log')) return 1;
   if (s.includes('o(1)')) return 0;
   return 2;
 }

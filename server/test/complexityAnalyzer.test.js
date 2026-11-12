@@ -7,6 +7,15 @@ test('ranks complexity labels', () => {
   assert.ok(complexityRank('O(n log n)') > complexityRank('O(n)'));
   assert.ok(complexityRank('O(N²)') === complexityRank('O(n^2)'));
   assert.equal(complexityRank('O(1)'), 0);
+  // Multi-variable targets must not make ordinary nested loops look suboptimal.
+  assert.equal(complexityRank('O(m*n)'), complexityRank('O(n^2)'));
+  assert.equal(complexityRank('O(V*E)'), complexityRank('O(n^2)'));
+  assert.equal(complexityRank('O(k*m*n)'), complexityRank('O(n^3)'));
+  assert.equal(complexityRank('O(N log k)'), complexityRank('O(n log n)'));
+  assert.equal(complexityRank('O(E log V)'), complexityRank('O(n log n)'));
+  assert.equal(complexityRank('O(log n)'), 1);
+  assert.equal(complexityRank('O(V+E)'), complexityRank('O(n)'));
+  assert.equal(complexityRank('exponential'), complexityRank('O(2^n)'));
 });
 
 test('python: nested for loops are quadratic with line numbers', () => {
